@@ -21,11 +21,13 @@ Everything ClickHouse, built here and delivered as one home-manager module trio 
 | `connections.<name>.mcp.enable`, `scopes` | anvil MCP server `clickhouse-<name>`: mcp-clickhouse, read-only (`CLICKHOUSE_ALLOW_WRITE_ACCESS=false`), password read from `passwordFile` at start |
 | `defaultConnection` | the connection used when none is named; must name an entry of `connections` |
 | `mcp.cloud.enable`, `url`, `scopes` | anvil MCP server `clickhouse-cloud`: ClickHouse Cloud's remote MCP over HTTP, substrate's `clickhouse-cloud` kind |
+| `mcp.lanterna.enable`, `name`, `package`, `configFile`, `scopes` | one anvil MCP server (default `clickhouse-fleet`): [lanterna](https://github.com/pleme-io/lanterna)'s `lanterna-mcp`, typed and observe-only, one `--target` per connection with `lanterna.enable`. `package` defaults to `pkgs.lanterna-mcp` from the consumer's overlay |
+| `connections.<name>.lanterna.enable`, `tls`, `userFile` | that connection as a lanterna target: `{label, host, tls, user-file, password-file}`, `host` from `secure` and `httpPort`; unset `userFile` writes the `user` name to the store |
 | `cloudCli.enable` | `clickhousectl` on PATH |
 
 The remote MCP answers for every organization the signed-in user belongs to; the agent runs the OAuth sign-in (Claude Code: `/mcp`). A service is reachable only after MCP is enabled on it in the Cloud console (Connect → MCP).
 
-Refused at eval: a `defaultConnection` naming no connection, a local MCP connection without `passwordFile`, a connection named `cloud` beside the remote server.
+Refused at eval: a `defaultConnection` naming no connection, a local MCP connection without `passwordFile`, a connection named `cloud` beside the remote server, `mcp.lanterna.enable` with no target, a lanterna target without `passwordFile` (while the server is on), and a lanterna server name that collides with another ClickHouse server.
 
 `config.xml` never carries a password.
 

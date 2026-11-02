@@ -33,6 +33,21 @@ let
   xml = on.home.file.".clickhouse-client/config.xml".text;
   srv = on.blackmatter.components.anvil.mcp.servers.clickhouse-cloud;
 
+  fakeLanterna = pkgs.writeShellScriptBin "lanterna-mcp" "exit 0";
+  fleet = eval {
+    enable = true;
+    connections.alpha = { host = "a.example.com"; user = "observer"; passwordFile = "/run/secrets/ch/alpha"; lanterna.enable = true; };
+    connections.beta = { host = "b.example.com"; secure = false; httpPort = 8123; userFile = "/run/secrets/ch/beta-user"; passwordFile = "/run/secrets/ch/beta"; tls = "accept-any"; lanterna.enable = true; };
+    connections.gamma = { host = "g.example.com"; };
+    mcp.lanterna = { enable = true; package = fakeLanterna; configFile = "/etc/lanterna.yaml"; scopes = [ "akeyless" ]; };
+  };
+  lsrv = fleet.blackmatter.components.anvil.mcp.servers.clickhouse-fleet;
+  targetsOf = args: map (a: builtins.fromJSON (builtins.unsafeDiscardStringContext a)) (lib.filter (a: lib.hasPrefix "{" a) args);
+  ltargets = targetsOf lsrv.args;
+  lanternaNoTarget = eval { enable = true; connections.a.host = "h"; mcp.lanterna = { enable = true; package = fakeLanterna; }; };
+  lanternaNoPassword = eval { enable = true; connections.a = { host = "h"; lanterna.enable = true; }; mcp.lanterna = { enable = true; package = fakeLanterna; }; };
+  lanternaParked = eval { enable = true; connections.a = { host = "h"; lanterna.enable = true; }; };
+
   off = eval { enable = true; };
   badDefault = eval { enable = true; defaultConnection = "nope"; connections.a.host = "h"; };
 
@@ -48,6 +63,15 @@ let
     local-mcp-only-where-enabled = !(on.blackmatter.components.anvil.mcp.servers ? clickhouse-aws-staging);
     cloud-cli-installed = lib.any (p: (p.pname or "") == "clickhousectl") on.home.packages;
     local-mcp-without-password-is-refused = lib.any (a: !a.assertion) noPassword.assertions;
+    lanterna-one-target-per-enabled-connection = map (t: t.label) ltargets == [ "alpha" "beta" ] && lib.length (lib.filter (a: a == "--target") lsrv.args) == 2;
+    lanterna-target-carries-the-cli-contract = lib.all (t: lib.attrNames t == [ "host" "label" "password-file" "tls" "user-file" ]) ltargets;
+    lanterna-host-follows-secure-and-http-port = (lib.elemAt ltargets 0).host == "https://a.example.com:8443" && (lib.elemAt ltargets 1).host == "http://b.example.com:8123";
+    lanterna-user-file-is-written-or-given = lib.hasSuffix "clickhouse-alpha-user" (lib.elemAt ltargets 0).user-file && (lib.elemAt ltargets 1).user-file == "/run/secrets/ch/beta-user";
+    lanterna-tls-and-password-pass-through = (lib.elemAt ltargets 1).tls == "accept-any" && (lib.elemAt ltargets 0).tls == "system" && (lib.elemAt ltargets 0).password-file == "/run/secrets/ch/alpha";
+    lanterna-config-and-scopes = lib.take 2 (lib.reverseList lsrv.args) == [ "/etc/lanterna.yaml" "--config" ] && lsrv.scopes == [ "akeyless" ] && lsrv.command == "lanterna-mcp";
+    lanterna-without-a-target-is-refused = lib.any (a: !a.assertion) lanternaNoTarget.assertions;
+    lanterna-target-without-password-is-refused = lib.any (a: !a.assertion) lanternaNoPassword.assertions;
+    lanterna-off-renders-no-server-even-with-targets = !(lanternaParked.blackmatter.components.anvil.mcp.servers ? clickhouse-fleet) && lib.all (a: a.assertion) lanternaParked.assertions;
   };
   failed = lib.attrNames (lib.filterAttrs (_: ok: !ok) checks);
 in
